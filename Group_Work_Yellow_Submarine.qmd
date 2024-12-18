@@ -1,0 +1,1085 @@
+---
+title: Impact of Airbnb on local area rental markets  
+subtitle: Yellow Submarine's Group Project
+bibliography: bibliography_wbw.bib
+csl: harvard-cite-them-right.csl
+execute:
+  echo: false
+  freeze: true
+  warning: false
+  message: false
+format:
+  html:
+    code-copy: true
+    code-link: true
+    toc: true
+    toc-title: On this page
+    toc-depth: 2
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+  pdf:
+    include-in-header:
+      text: |
+        \addtokomafont{disposition}{\rmfamily}
+    mainfont: Spectral
+    sansfont: Spectral
+    monofont: Spectral
+    papersize: a4
+    geometry:
+      - top=25mm
+      - left=40mm
+      - right=30mm
+      - bottom=25mm
+      - heightrounded
+    toc: false
+    number-sections: false
+    colorlinks: true
+    highlight-style: github
+jupyter:
+  jupytext:
+    text_representation:
+      extension: .qmd
+      format_name: quarto
+      format_version: '1.0'
+      jupytext_version: 1.15.2
+  kernelspec:
+    display_name: Python 3 (ipykernel)
+    language: python
+    name: python3
+---
+
+## Declaration of Authorship {.unnumbered .unlisted}
+
+We, [**Yellow Submarine**], pledge our honour that the work presented in this assessment is our own. Where information has been derived from other sources, we confirm that this has been indicated in the work. Where a Large Language Model such as ChatGPT has been used we confirm that we have made its contribution to the final submission clear.
+
+Date: 17/12/2024
+
+Student Numbers:  
+
+s.lin.24@ucl.ac.uk	Shijie Lin  
+wenkai.song.24@ucl.ac.uk	Wenkai Song  
+yifan.feng.23@ucl.ac.uk	Yifan Feng  
+hanbing.xuan.24@ucl.ac.uk	Hanbing Xuan  
+bowen.wu.24@ucl.ac.uk	Bowen Wu  
+
+## Brief Group Reflection
+
+| What Went Well | What Was Challenging         |
+| -------------- | ---------------------------- |
+| analysis       | the rendering part           |
+|                | combine all the work together|
+
+## Priorities for Feedback
+
+Are there any areas on which you would appreciate more detailed feedback if we're able to offer it?
+
+Analysis process.
+
+{{< pagebreak >}}
+
+# Response to Questions
+
+All the datassets, shapefiles, bibfile could be found on  
+https://github.com/wbwhaha/FSDS_Group_Assignment.  
+
+The thirteenth code cell may take more than a minute to read the data, depending on the quality of the network.
+
+```{python}
+import os
+```
+
+```{python}
+# Check the the CSL file (.csl) and the BibTeX file (.bib) 
+import requests
+
+def check_files(url, file_name):
+    try:
+        response = requests.get(url)
+        # Check if the request was successful
+        response.raise_for_status()
+
+        with open(file_name, "wb") as file:
+            file.write(response.content)
+        print("File downloaded successfully.")
+
+    except requests.exceptions.RequestException as e:
+        print(f"Failed to download the file: {e}")
+
+```
+
+```{python}
+#| include: false
+check_files("https://raw.githubusercontent.com/wbwhaha/FSDS_Group_Assignment/refs/heads/main/bibliography_wbw/bibliography_wbw.bib",
+            "bibliography_wbw.bib")
+```
+
+```{python}
+#| include: false
+check_files("https://raw.githubusercontent.com/citation-style-language/styles/master/harvard-cite-them-right.csl",
+            "harvard-cite-them-right.csl")
+```
+
+```{python}
+#| include: false
+
+# Check the packages
+import importlib 
+import pip
+
+def check_and_install(package): 
+    
+    try: importlib.import_module(package) 
+    
+    except ImportError: 
+
+        print(f"{package} is not installed. Installing...") 
+        pip.main(['install', package]) 
+
+# List of required packages 
+required_packages = ['pandas', 'numpy', 'geopandas', 'matplotlib', 'mapclassify', 'mpl_toolkits', 'scipy', 'seaborn', 'sklearn', 'statsmodels'] 
+# Check and install each package 
+for package in required_packages: 
+    check_and_install(package)
+```
+
+```{python}
+# Improt packages
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import geopandas as gpd
+import mapclassify
+import statsmodels
+
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+```
+
+```{python}
+# Improt packages
+import matplotlib.colors as mcolors
+import matplotlib.patheffects as pe
+import matplotlib.pyplot as plt
+```
+
+```{python}
+# Improt packages
+from scipy.stats import chi2_contingency
+from scipy.stats import f_oneway, ttest_ind
+from scipy.stats import linregress
+```
+
+```{python}
+# Improt packages
+import statsmodels.api as sm
+from statsmodels.tsa.arima.model import ARIMA
+from statsmodels.stats.outliers_influence import variance_inflation_factor
+```
+
+```{python}
+# Improt packages
+from sklearn.cluster import KMeans
+from sklearn.cluster import DBSCAN
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+```
+
+```{python}
+# Read the main csv file from github
+columns_to_skip = ['name', 'host_name']
+df_airbnb_total = pd.read_csv('https://raw.githubusercontent.com/wbwhaha/FSDS_Group_Assignment/refs/heads/main/Datasets/listings.csv', 
+                              usecols=lambda col: col not in columns_to_skip)
+```
+
+```{python}
+df_airbnb_total = df_airbnb_total.drop('neighbourhood_group', axis=1)
+df_airbnb_total = df_airbnb_total.drop('license', axis=1)
+```
+
+```{python}
+# Read the shapefiles from github for geo visualization
+# Load the shapefile for London boroughs
+london_gdf = gpd.read_file('https://github.com/wbwhaha/FSDS_Group_Assignment/raw/refs/heads/main/statistical-gis-boundaries-london/ESRI/London_Borough_Excluding_MHW.shp')
+building_geo = gpd.read_file('https://github.com/wbwhaha/FSDS_Group_Assignment/raw/refs/heads/main/Shapefiles_London/01_LondonBuildings.shp')
+rail_geo = gpd.read_file('https://github.com/wbwhaha/FSDS_Group_Assignment/raw/refs/heads/main/Shapefiles_London/01_LondonRailNetwork.shp')
+street_geo = gpd.read_file('https://github.com/wbwhaha/FSDS_Group_Assignment/raw/refs/heads/main/Shapefiles_London/01_LondonStreetNetwork.shp')
+water_geo = gpd.read_file('https://github.com/wbwhaha/FSDS_Group_Assignment/raw/refs/heads/main/Shapefiles_London/01_LondonWaterBody.shp')
+
+# Convert to the same coordinate reference system
+london_gdf = london_gdf.to_crs(epsg=4326)
+building_geo = building_geo.to_crs(epsg=4326)
+rail_geo = rail_geo.to_crs(epsg=4326)
+street_geo = street_geo.to_crs(epsg=4326)
+water_geo = water_geo.to_crs(epsg=4326)
+```
+
+## 1. Who collected the InsideAirbnb data?
+
+Inside Airbnb is a collective of residents, activists, and allies from a range of organizations worldwide (@insideairbnb).
+
+## 2. Why did they collect the InsideAirbnb data?
+
+As discussed on @insideairbnb, the data collected by Inside Airbnb is driven by their mission to support residents and activists organizing to shield their communities from potential negative impacts of short-term rentals. The collective believes in empowering communities through shared resources and by fostering collaboration. Their network acts as an inclusive and safe space for residents, activists, and allies to connect, learn from one another, and organize collective action. It aims to amplify efforts and pool resources to mitigate the challenges posed by short-term rental platforms.
+
+## 3. How did they collect it?
+
+The Inside Airbnb website leverages a range of open-source technologies and modern services for data presentation and hosting. Key technologies include **D3.js** for dynamic data visualization, **Bootstrap** for creating responsive, mobile-friendly layouts, **Python** for data scraping and analysis, such as extracting publicly available housing information, prices, reviews, and other dynamic content from the Airbnb website, **PostgreSQL** for managing structured datasets, and **Google Fonts** for enhancing design aesthetics. Maps on the site are designed using **Mapbox** with data sourced from **OpenStreetMap** and are hosted through Mapbox's robust API services. The website itself is hosted via **Amazon S3**, ensuring fast, secure, and reliable access.
+
+## 4. How does the method of collection (Q3) impact the completeness and/or accuracy of the InsideAirbnb data? How well does it represent the process it seeks to study, and what wider issues does this raise? 
+
+**Impact of Data Collection Method on Completeness/Accuracy**:
+
+**Data Timeliness**:  
+Inside Airbnb data reflects a specific point in time, missing real-time updates and potentially creating discrepancies with the current market.  
+**Selection Bias**:  
+The scraper may exclude inactive or temporarily delisted properties, reducing data comprehensiveness and reliability, which was mentioned in @barron_sharing_2018.  
+**Data Integrity**:   
+Website structure changes or restrictions can cause data loss, affecting quality and credibility.
+
+**Representation of the Process Studied**:
+
+**Real-Time Limitations**:  
+As showed in @gurran_when_2017, while valuable for analyzing market impacts, the data lacks real-time updates, hindering dynamic trend analysis.  
+**Theoretical vs. Reality**:  
+The dataset aids economic research but may underrepresent areas or property types due to selection bias, limiting practical applications.
+
+**Wider Issues Raised**:
+
+**Privacy and Data Ethics**:  
+Scraping raises concerns about user privacy and ethical use of personal data.  
+**Policy Impact**:  
+The data's accuracy influences policymaking on short-term rental regulation.  
+**Community Response**:  
+Data presentation may shape public perception, either encouraging rentals or amplifying community opposition.
+
+## 5. What ethical considerations does the use of the InsideAirbnb data raise? 
+
+When using Inside Airbnb data for research, it is necessary to balance its research value with potential ethical risks. The acquisition of data is often done without the consent of the landlord or tenant, which may violate privacy and the terms of service of the Airbnb platform, leading to legal and ethical disputes, which was noted by @spier_uncovering_2024. In addition, The results of the Airbnb platform are typically used to support city policies such as short-term rental restrictions. However, as discussed by @prentice_addressing_2024, in the policy-making process, the crawled data is only a snapshot of a specific time point, which may have bias. If the interests of small landlords or the needs of tenants are not fully considered, the analysis conclusions may not be comprehensive enough or mislead policy makers, resulting in unfair impacts on the landlord or tenant groups.
+
+## 6. With reference to the InsideAirbnb data (*i.e.* using numbers, figures, maps, and descriptive statistics), what does an analysis of Hosts and the types of properties that they list suggest about the nature of Airbnb lettings in London? 
+
+```{python}
+# Convert to numeric and handle missing values
+df_airbnb_total['calculated_host_listings_count'] = pd.to_numeric(df_airbnb_total['calculated_host_listings_count'], errors='coerce').fillna(0)
+
+# Define categories for hosts
+def host_category(x):
+    if x == 1:
+        return 'Single-listing Host'
+    elif 2 <= x <= 4:
+        return 'Small-scale Host'
+    else:
+        return 'Multi-listing Host'
+        
+df_airbnb_total['host_category'] = df_airbnb_total['calculated_host_listings_count'].apply(host_category)
+
+# Create a crosstab for host_category vs. room_type
+host_room_ct = pd.crosstab(df_airbnb_total['host_category'], df_airbnb_total['room_type'])
+host_room_ct_norm = host_room_ct.div(host_room_ct.sum(axis=1), axis=0)  # Normalize row-wise
+
+# Create subplots
+fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+
+# Plot 1: Distribution of Host Listing Counts (Histogram)
+sns.histplot(df_airbnb_total['calculated_host_listings_count'], bins=30, kde=True, ax=axes[0])
+axes[0].set_title('Fig_0_a:Distribution of Host Listing Counts\n', fontsize=16, fontweight='bold', color='darkblue')
+axes[0].set_xlabel('Number of Listings per Host', fontsize=14, fontweight='bold', color='darkblue')
+axes[0].set_ylabel('Frequency', fontsize=14, fontweight='bold', color='darkblue')
+axes[0].tick_params(axis='x', labelsize=10) 
+axes[0].tick_params(axis='y', labelsize=10)
+
+# Plot 2: Stacked Bar of Room Types by Host Category
+host_room_ct_norm.plot(kind='bar', stacked=True, ax=axes[1])
+axes[1].set_title('Fig_0_b:Room Type Distribution by Host Category\n', fontsize=16, fontweight='bold', color='darkblue')
+axes[1].set_xlabel('Host Category', fontsize=14, fontweight='bold', color='darkblue')
+axes[1].set_ylabel('Proportion of Listings', fontsize=14, fontweight='bold', color='darkblue')
+axes[1].tick_params(axis='x', labelsize=10) 
+axes[1].tick_params(axis='y', labelsize=10)
+axes[1].legend(title='Room Type', bbox_to_anchor=(1.05, 1))
+
+plt.tight_layout()
+plt.show()
+
+```
+
+The division standard of host could be found in @wachsmuth_airbnb_2018.
+
+**Host Distribution**: Most hosts have a small number of listings, indicating that the market is dominated by individual or small-scale hosts rather than large commercial operators. According to (@meris_airbnb_2023), the majority of hosts have fewer than five listings. This suggests that many people are using Airbnb as a supplementary income source rather than a full-time business. 
+
+**Property Types**: Entire homes/apartments and private rooms are the most common types of properties listed. Multi-listing hosts tend to list entire homes/apartments more frequently, while single-listing hosts and small-scale hosts list private rooms more often. This pattern is also reflected in the data provided by Smarthost, which shows a high demand for entire homes and private rooms (@noauthor_insiders_nodate).
+
+**Commercial vs. Personal Use**: The prevalence of entire homes/apartments and private rooms suggests that many listings are for personal use rather than commercial use. (@noauthor_london_nodate) pointed out that this observation aligns with Airbtics Market Statistics, which indicates that individual hosts predominantly list entire homes and private rooms.
+
+Overall, the analysis suggests that Airbnb in London is characterized by a large number of individual hosts offering personal accommodations, with entire homes and private rooms being the most common types of listings.
+
+{{< pagebreak >}}
+
+## 7. Drawing on your previous answers, and supporting your response with evidence (*e.g.* figures, maps, EDA/ESDA, and simple statistical analysis/models drawing on experience from, e.g., CASA0007), how *could* the InsideAirbnb data set be used to inform the regulation of Short-Term Lets (STL) in London? 
+
+## 0.Beginning  
+
+The following analysis including five steps aims to unpack the nature of Airbnb lettings in London by progressively exploring key data dimensions. Starting with a broad geographical perspective, we then narrow our focus to pricing, market competitiveness, commercial hosting patterns, and demand signals, each step building on the insights gleaned from the previous one.
+
+
+
+## 1. Geographic Distribution
+```{python}
+# Read additional csv file
+borough_code = pd.read_csv('https://raw.githubusercontent.com/wbwhaha/FSDS_Group_Assignment/refs/heads/main/Datasets/borough%20code.csv')
+# Combine two csv files together
+df_total = pd.merge(df_airbnb_total, borough_code, left_on='neighbourhood', right_on='Borough Name').drop('Borough Name', axis=1)
+```
+
+```{python}
+# Select the columns needed
+airbnb_price = df_total[['Borough Code', 'price']]
+airbnb_price.drop(airbnb_price[np.isnan(airbnb_price['price'])].index, inplace=True)
+```
+
+```{python}
+# Calculate mean price per borough code
+airbnb_mean_price = airbnb_price.groupby('Borough Code')['price'].mean().reset_index()
+# Rename columns
+airbnb_mean_price.columns = ['Borough Code', 'Mean Price']
+```
+
+```{python}
+# Combine csv file and shapefile together for ploting
+merged_geo = london_gdf.merge(airbnb_mean_price, left_on='GSS_CODE', right_on='Borough Code', how='left')
+```
+
+```{python}
+# Create figure with custom size and layout
+fig, ax = plt.subplots(1, 1, figsize=(16, 9))
+
+# Plot additional layers (street, railway, waterway)
+street_geo.plot(ax=ax, color='grey', linewidth=0.2)
+rail_geo.plot(ax=ax, color='white', linewidth=0.1, alpha=0.5)
+water_geo.plot(ax=ax, color='skyblue', linewidth=0.1, alpha=0.5)
+
+# Plot choropleth map for rent price with power scaling
+norm = mcolors.PowerNorm(gamma=0.5) 
+a_1 = merged_geo.plot(
+        column='Mean Price',
+        ax=ax,
+        cmap='viridis',
+        norm=norm)
+
+# Adjust the fontsize of longitude and latitude
+figure_1 = a_1.figure
+cb_ax_1 = figure_1.axes[0]
+cb_ax_1.tick_params(labelsize=10)
+
+# Add color bar
+sm_color = plt.cm.ScalarMappable(cmap='viridis', norm=norm)
+sm_color._A = []
+
+cbar = plt.colorbar(sm_color, ax=ax, orientation='horizontal', fraction=0.036, pad=0.1)
+cbar.set_label('Rent Price £ per day (2024)', fontsize=12, fontweight='bold', color='darkblue')
+cbar.ax.tick_params(labelsize=10)
+
+# Add centered title
+ax.set_title('Fig_1:Rent Price in London Boroughs (2024)', 
+             fontsize=16, 
+             fontweight='bold',
+             color='darkblue',
+             pad=20)
+
+# Adjust layout to place color bar inside the map
+plt.tight_layout(rect=[0, 0, 1, 0.95])
+
+plt.show()
+```
+
+\vspace{9em}
+
+**1.1 Price Distribution by boroughs**  
+This map visualizes the spatial distribution of average Airbnb prices across London boroughs, helping identify price variations by area. Yellow areas represent the highest prices, concentrated in central London boroughs like **Westminster** and **Kensington**. Purple and blue areas indicate lower prices, mostly in outer London boroughs. Central London has significantly higher Airbnb listing prices due to higher demand and property values, while prices drop in the outer areas.
+
+```{python}
+# Define a function for simple linear regression
+def simple_linear_regression(df, x_variables, y_variable):
+    # Check for missing values
+    print(df.isnull().sum())
+
+    # Drop rows with missing values (optional but recommended)
+    df = df.dropna()
+
+    # Define the predictor (independent) and response (dependent) variables
+    X = df[[x_variables]]
+    y = df[y_variable]
+
+    # Add a constant term for the intercept
+    X = sm.add_constant(X)
+    
+    # Create and fit the OLS model
+    model = sm.OLS(y, X).fit()
+
+    # Generate predicted values
+    df['Predicted_Value_'] = model.predict(X)
+
+    r_squared = model.rsquared
+    mse = mean_squared_error(y, df['Predicted_Value_'])
+
+    # Plot the original data points
+    plt.scatter(df[x_variables], df[y_variable], color='blue', label='Data points')
+
+    # Plot the regression line
+    plt.plot(df[x_variables], df['Predicted_Value_'], color='red', linewidth=1.5, label='Least Squares Line')
+
+    # Add R-squared value and MSE as text annotations
+    plt.text(0.05, 0.95, f'R-squared = {r_squared:.3f}', transform=plt.gca().transAxes,
+            fontsize=8, color='black', bbox=dict(facecolor='white', edgecolor='black', alpha=0.6), ha='left')
+    
+    plt.text(0.05, 0.85, f'MSE = {mse:.3f}', transform=plt.gca().transAxes,
+            fontsize=8, color='black', bbox=dict(facecolor='white', edgecolor='black', alpha=0.6), ha='left')
+
+    # Add labels and title
+    plt.xlabel(x_variables, fontsize=14, fontweight='bold', color='darkblue')
+    plt.ylabel(y_variable, fontsize=14, fontweight='bold', color='darkblue')
+    plt.xticks(fontsize=10) 
+    plt.yticks(fontsize=10)
+    plt.title(f'Linear Regression: {y_variable} vs. {x_variables}\n', fontsize=16, fontweight='bold', color='darkblue')
+    plt.legend(fontsize='10', loc='upper right', frameon=True, fancybox=True, shadow=True)
+
+    # Show the plot
+    plt.show()
+```
+
+## 2. Listing Price and Type Analysis:
+Next, investigate how room types (e.g., entire apartments vs. private rooms) relate to pricing across neighborhoods. Understanding price variations and property types helps clarify whether certain areas and room types cater to more lucrative, tourist-focused niches.
+
+```{python}
+# Data Preprocessing
+# Select necessary fields
+columns_needed = ['neighbourhood', 'room_type', 'price']
+data_roomtype = df_airbnb_total[columns_needed].dropna()
+
+# Convert price to float
+data_roomtype['price'] = pd.to_numeric(data_roomtype['price'], errors='coerce')
+data_roomtype= data_roomtype.dropna()
+```
+
+```{python}
+plt.figure(figsize=(10, 6))
+sns.boxplot(data=data_roomtype, x='room_type', y='price')
+plt.yscale('log')  # Use log scale if prices vary widely
+plt.title("Fig_2_a:Price Distribution by Room Type\n", fontsize=16, fontweight='bold', color='darkblue')
+plt.xlabel("Room Type", fontsize=14, fontweight='bold', color='darkblue')
+plt.ylabel("Price",fontsize=14, fontweight='bold', color='darkblue')
+plt.xticks(fontsize=12) 
+plt.yticks(fontsize=12)
+plt.show()
+```
+
+
+
+**2.1 Price Distribution by Room Type**
+The boxplot compares the price distributions of different room types, highlighting medians, spreads, and outliers. Entire home/apt has the highest median price and the widest spread, with many outliers indicating luxury properties. Hotel room prices are concentrated and relatively high but less variable. Private room and Shared room show significantly lower prices and narrower spreads. Entire home/apt and Hotel room are the more expensive options, while Private room and Shared room are the most affordable choices.
+
+
+
+```{python}
+#| include: false
+
+# Statistical Analysis - ANOVA Test for Price Differences
+anova_result = f_oneway(
+    data_roomtype[data_roomtype['room_type'] == 'Entire home/apt']['price'],
+    data_roomtype[data_roomtype['room_type'] == 'Private room']['price'],
+    data_roomtype[data_roomtype['room_type'] == 'Shared room']['price'],
+    data_roomtype[data_roomtype['room_type'] == 'Hotel room']['price']
+)
+print("ANOVA test result:", anova_result)
+
+# Pairwise t-tests between room types
+def t_test_pairs(df, col, group_col):
+    groups = df[group_col].unique()
+    results = []
+    for i in range(len(groups)):
+        for j in range(i + 1, len(groups)):
+            group1 = df[df[group_col] == groups[i]][col]
+            group2 = df[df[group_col] == groups[j]][col]
+            t_stat, p_val = ttest_ind(group1, group2, equal_var=False)
+            results.append((groups[i], groups[j], t_stat, p_val))
+    return results
+
+pairwise_tests = t_test_pairs(data_roomtype, 'price', 'room_type')
+print("Pairwise t-test results:")
+for result in pairwise_tests:
+    print(f"{result[0]} vs {result[1]}: t-statistic = {result[2]:.3f}, p-value = {result[3]:.3e}")
+```
+
+```{python}
+# Visualization of Room Type Impact on Price
+room_type_encoded = pd.get_dummies(data_roomtype['room_type'], drop_first=True)
+X = room_type_encoded
+y = data_roomtype['price']
+
+# Linear Regression Model
+model = LinearRegression()
+model.fit(X, y)
+intercept = model.intercept_
+
+# Coefficients and Interpretation
+coefficients = pd.DataFrame(
+    model.coef_,
+    X.columns,
+    columns=["Coefficient"]
+)
+coefficients.loc['Entire home/apt'] = intercept
+
+# print("Impact of Room Type on Price:")
+# print(coefficients)
+
+# Plot Coefficients
+# Set the style and context for the plot
+sns.set(style="whitegrid", context="talk")
+
+# Create the figure
+plt.figure(figsize=(3, 4))
+
+# Customizing the barplot with a palette and bar edge color
+sns.barplot(
+    x=coefficients.index,
+    y="Coefficient",
+    data=coefficients,
+    palette="viridis",
+    edgecolor=".2"
+)
+
+# Adding titles and labels with improved fonts and sizes
+plt.title("Fig_2_b:Impact of Room Type on Price\n", fontsize=12, fontweight='bold', color='darkblue')
+plt.ylabel("Coefficient", fontsize=10, fontweight='bold', color='darkblue')
+plt.xlabel("Room Type", fontsize=10, fontweight='bold', color='darkblue')
+
+# Rotate x-axis labels for better readability
+plt.xticks(fontsize = 8, rotation=45, ha='right')
+plt.yticks(fontsize = 8)
+
+# Adding grid lines to the plot
+plt.grid(axis='y', linestyle='--', linewidth=0.7)
+
+# Adding a background color to the plot
+plt.gca().set_facecolor('#f7f7f7')
+
+# Adjust the layout for better spacing
+plt.tight_layout()
+plt.show()
+```
+
+**2.2 Impact of Room Type on Price (Linear Regression Coefficients)**
+
+The bar chart visualizes the coefficients from the linear regression model, showing how each room type impacts the price relative to others. Entire home/apt has the largest positive impact on price (239), making it the most expensive type. Hotel room shows a slight positive effect (133). Private room and Shared room both have negative coefficients (-127 and -91), indicating they reduce the price compared to other types. Hotel room significantly increases prices, while Private room and Shared room lead to much lower prices.
+
+**2.3 Summary**
+
+Airbnb prices are highest in central London and decrease towards the outskirts. Room type significantly influences price: Hotel room listings have the greatest positive impact, followed by Entire home/apt. In contrast, Private room and Shared room are associated with much lower prices. The increase in individual landlords, who primarily manage shared and private rooms, tends to lower rental prices. Conversely, commercial landlords, who typically oversee hotel rooms and entire apartments, tend to drive prices higher. This distinction reflects a broader trend in the rental market where private landlords contribute to more affordable housing options,such as private room and shared room, while commercial landlords are associated with higher rental costs.
+
+## 3. Short-Term vs. Long-Term Market Competition:
+With a grasp of spatial and price dynamics, add an availability dimension. Determine if listings are predominantly short-term oriented (high availability and short minimum stays), suggesting competition with long-term rental markets.
+```{python}
+# Load the CSV file
+url = "https://raw.githubusercontent.com/wbwhaha/FSDS_Group_Assignment/main/Datasets/listings.csv"
+try:
+    listings = pd.read_csv(url)
+except Exception as e:
+    print(f"Error loading data: {e}")
+    raise
+
+# Calculate average availability by neighbourhood
+neighbourhood_activity = (
+    listings.groupby("neighbourhood").agg({"availability_365": "mean"}).reset_index()
+)
+
+# Rename columns for clarity
+neighbourhood_activity.columns = ["Neighbourhood", "Avg Availability (Days)"]
+
+# Plot the bar chart
+plt.figure(figsize=(14, 8))
+plt.bar(
+    neighbourhood_activity["Neighbourhood"],
+    neighbourhood_activity["Avg Availability (Days)"],
+    color="skyblue",
+    edgecolor="black",
+)
+
+# Add title and labels
+plt.title("Fig_3:Average Availability by Neighbourhood\n", fontsize=16, fontweight='bold', color='darkblue')
+plt.xlabel("Neighbourhood", fontsize=14, fontweight='bold', color='darkblue')
+plt.ylabel("Average Availability (Days)", fontsize=14, fontweight='bold', color='darkblue')
+
+# Rotate x-axis labels for better readability
+plt.xticks(rotation=90, fontsize=10)
+plt.yticks(fontsize=10)
+# Add a grid for better visualization
+plt.grid(axis="y", linestyle='--', alpha=0.75)
+
+# Adjust layout to prevent overlap
+plt.tight_layout()
+
+# Show the plot
+plt.show()
+```
+
+**3.1 Analysis of Neighborhood Availability Trends**
+The neighborhoods with the highest average availability are Barnet and Haringey, both exceeding 200 days, while those with the lowest average availability are Camden and Hounslow, both below 100 days. Most neighborhoods have an average availability between 100 and 200 days, showing a general trend. There is significant variability in average availability across different neighborhoods, indicating that some areas have much higher or lower availability than others.
+
+```{python}
+def calculate_rsquared_value(listings, y):
+    # Classify high-active and low-active properties
+    high_active_threshold = 180  # Threshold for availability_365
+    listings['activity_level'] = listings['availability_365'].apply(
+        lambda x: 'High Active' if x >= high_active_threshold else 'Low Active'
+    )
+
+    # Filter long-term rental market based on minimum_nights > 180
+    long_term_rentals = listings[listings['minimum_nights'] > 180]
+
+    # Calculate average long-term rental price per neighbourhood
+    long_term_price = long_term_rentals.groupby('neighbourhood')['price'].mean().reset_index()
+    long_term_price.columns = ['neighbourhood', y]
+
+    # Calculate high-active property ratio per neighbourhood
+    activity_distribution = listings.groupby('neighbourhood')['activity_level'].value_counts().unstack(fill_value=0)
+    activity_distribution['Total Listings'] = activity_distribution['High Active'] + activity_distribution['Low Active']
+    activity_distribution['high_active_ratio'] = activity_distribution['High Active'] / activity_distribution['Total Listings']
+
+    # Merge data for regression analysis
+    # Use outer join to keep all neighbourhoods
+    data = long_term_price.merge(activity_distribution[['high_active_ratio', 'Total Listings']], 
+                                on='neighbourhood', 
+                                how='outer')
+
+    # Handle missing values after merge
+    data[y] = data[y].fillna(0)  # Fill missing rent prices with 0 or another value
+    data['high_active_ratio'] = data['high_active_ratio'].fillna(0)        # Fill missing ratios with 0
+    data['Total Listings'] = data['Total Listings'].fillna(0)              # Fill missing total listings with 0
+
+    # Define independent X and dependent variables y
+    X = data[['high_active_ratio', 'Total Listings']]
+    y = data[y]
+
+    # Add a constant for the intercept
+    X = sm.add_constant(X)
+
+    # Build the OLS regression model
+    model = sm.OLS(y, X).fit()
+
+    # Output regression results
+    # print(model.summary())
+
+    return f"R-squared: {model.rsquared}"
+```
+
+```{python}
+R1 = calculate_rsquared_value(listings, 'long_term_rent_price')
+R2 = calculate_rsquared_value(listings, 'long_term_supply')
+```
+
+**3.2 Impact of High Active Housing Ratio and Total Listings on Long-Term Housing Supply**  
+
+R-squared (coefficient of determination): `{python} R2` which seems good.
+
+For high active housing ratio (high_active_ratio), it has a positive impact on long-term housing supply, that is, when the proportion of high active short-term rental housing increases, the supply of long-term rental housing may also increase. 
+
+## 4. Impact of Commercial Hosts:
+After mapping out where and how short-term oriented these listings are, analyze the role of hosts with multiple listings. Identifying commercial operators provides insights into whether Airbnb activity resembles professional hospitality services or remains closer to a home-sharing ethos. In this part, Commercial Host has another name, Multi-listing Host.
+```{python}
+try:
+    # Columns needed for analysis
+    columns_needed = ['calculated_host_listings_count', 'neighbourhood', 'price', 'availability_365', 'room_type', 'longitude', 'latitude']
+    df_airbnb_total_Q4_1 = df_airbnb_total[columns_needed].dropna()
+
+    # Convert 'price' to numeric, removing any dollar signs or commas
+    df_airbnb_total_Q4_1['price'] = pd.to_numeric(df_airbnb_total_Q4_1['price'].astype(str).str.replace(r'[$,]', '', regex=True), errors='coerce')
+    df_airbnb_total_Q4_1 = df_airbnb_total_Q4_1.dropna()
+
+    # Function to categorize hosts based on listing count
+    def categorize_host(count):
+        if count == 1:
+            return 'Single-listing Host'
+        elif 2 <= count <= 4:
+            return 'Small-scale Host'
+        else:
+            return 'Multi-listing Host'
+
+    # Apply the function to create a new column 'host_type'
+    df_airbnb_total_Q4_1['host_type'] = df_airbnb_total_Q4_1['calculated_host_listings_count'].apply(categorize_host)
+
+    # Filter data for listings with price between 200 and 1000
+    data_filtered = df_airbnb_total_Q4_1[(df_airbnb_total_Q4_1['price'] >= 200) & (df_airbnb_total_Q4_1['price'] <= 1000)]
+
+    # Filter data for multi-host listings
+    multi_host_df = df_airbnb_total_Q4_1[df_airbnb_total_Q4_1['calculated_host_listings_count'] >= 3]
+    geometry = gpd.points_from_xy(multi_host_df['longitude'], multi_host_df['latitude'])
+    gdf_airbnb = gpd.GeoDataFrame(multi_host_df, geometry=geometry, crs="EPSG:4326").to_crs(london_gdf.crs)
+
+    # Spatial join with London boroughs to get borough names
+    joined = gpd.sjoin(gdf_airbnb, london_gdf, how="left", predicate="intersects")
+    borough_stats = joined.groupby('NAME').agg({'calculated_host_listings_count': 'sum', 'price': 'mean'}).reset_index()
+    london_gdf = london_gdf.merge(borough_stats, on='NAME', how='left').fillna(0)
+
+    # Classify boroughs by density and price using quantiles
+    density_classifier = mapclassify.Quantiles(london_gdf['calculated_host_listings_count'], k=5)
+    price_classifier = mapclassify.Quantiles(london_gdf['price'], k=5)
+    london_gdf['density_class'] = density_classifier.yb
+    london_gdf['price_class'] = price_classifier.yb
+
+    # Calculate density and price thresholds (80th percentile)
+    density_threshold = london_gdf['calculated_host_listings_count'].quantile(0.8)
+    price_threshold = london_gdf['price'].quantile(0.8)
+
+    # Determine high density and high price boroughs
+    london_gdf['high_density'] = london_gdf['calculated_host_listings_count'] >= density_threshold
+    london_gdf['high_price'] = london_gdf['price'] >= price_threshold
+
+    # Perform linear regression between listings count and price
+    slope, intercept, r_value, p_value, std_err = linregress(london_gdf['calculated_host_listings_count'], london_gdf['price'])
+    x_values = np.linspace(london_gdf['calculated_host_listings_count'].min(), london_gdf['calculated_host_listings_count'].max(), 100)
+    y_values = slope * x_values + intercept
+
+    # Create combined figure (2 rows, 2 columns)
+    fig, axes = plt.subplots(2, 2, figsize=(24, 16))
+
+    # Plot density class on the first subplot
+    london_gdf.plot(column='density_class', cmap='viridis', linewidth=0.8, ax=axes[0, 0], edgecolor='0.8', legend=True)
+    axes[0, 0].set_title('Fig_4_1_a: Density of Multi-Host Airbnb Listings', fontsize=16, fontweight='bold', color='darkblue')
+    axes[0, 0].set_axis_off()
+    # Annotate borough names
+    for x, y, label in zip(london_gdf.geometry.centroid.x, london_gdf.geometry.centroid.y, london_gdf['NAME']):
+        axes[0, 0].annotate(label, xy=(x, y), xytext=(3, 3), textcoords="offset points", fontsize=8)
+
+    # Plot price class on the second subplot
+    london_gdf.plot(column='price_class', cmap='plasma', linewidth=0.8, ax=axes[0, 1], edgecolor='0.8', legend=True)
+    axes[0, 1].set_title('Fig_4_1_b: Average Price of Multi-Host Airbnb Listings', fontsize=16, fontweight='bold', color='darkblue')
+    axes[0, 1].set_axis_off()
+    # Annotate borough names
+    for x, y, label in zip(london_gdf.geometry.centroid.x, london_gdf.geometry.centroid.y, london_gdf['NAME']):
+        axes[0, 1].annotate(label, xy=(x, y), xytext=(3, 3), textcoords="offset points", fontsize=8)
+
+    # Scatter plot showing the relationship between listings count and price
+    axes[1, 0].scatter(london_gdf['calculated_host_listings_count'], london_gdf['price'],
+                        c=['green' if (h and p) else 'red' if (h or p) else 'blue' for h, p in zip(london_gdf['high_density'], 
+                        london_gdf['high_price'])], 
+                        alpha=0.7)
+    axes[1, 0].plot(x_values, y_values, color='orange', linestyle='--', label=f'Regression Line (R² = {r_value**2:.2f})')
+    axes[1, 0].axhline(y=london_gdf['price'].mean(), color='grey', linestyle='-', label='Mean Price')
+    axes[1, 0].axvline(x=london_gdf['calculated_host_listings_count'].mean(), color='grey', linestyle='-', label='Mean Density')
+    axes[1, 0].set_xlabel('Total Listings by Multi-Host Landlords', fontsize=14, fontweight='bold', color='darkblue')
+    axes[1, 0].set_ylabel('Average Price (£)', fontsize=14, fontweight='bold', color='darkblue')
+    axes[1, 0].set_title('Fig_4_1_c: Relationship Between Multi-Host Landlord Density and Average Price\n', fontsize=16, fontweight='bold', color='darkblue')
+    axes[1, 0].tick_params(axis='x', labelsize=12) 
+    axes[1, 0].tick_params(axis='y', labelsize=12)
+    axes[1, 0].legend()
+
+    # Annotate high density and/or high price boroughs
+    for i, txt in enumerate(london_gdf['NAME']):
+        if london_gdf['high_density'][i] or london_gdf['high_price'][i]:
+            axes[1, 0].annotate(txt, (london_gdf['calculated_host_listings_count'][i], london_gdf['price'][i]), textcoords="offset points", xytext=(5, 5), ha='left', fontsize=8)
+    axes[1, 0].grid(True)
+
+    # Airbnb Boxplot
+    sns.boxplot(data=df_airbnb_total_Q4_1, x='host_type', y='price', order=['Single-listing Host', 'Small-scale Host', 'Multi-listing Host'], ax=axes[1,1])
+    axes[1, 1].set_ylim(0,500)
+    axes[1, 1].set_title('Fig_4_1_d: Price Distribution by Host Type\n', fontsize=16, fontweight='bold', color='darkblue')
+    axes[1, 1].set_xlabel('Host Type', fontsize=14, fontweight='bold', color='darkblue')
+    axes[1, 1].set_ylabel('Price (£)', fontsize=14, fontweight='bold', color='darkblue')
+    axes[1, 1].tick_params(axis='x', labelsize=12) 
+    axes[1, 1].tick_params(axis='y', labelsize=12)
+
+    plt.tight_layout()
+    plt.show()
+
+    # print(london_gdf[['NAME', 'calculated_host_listings_count', 'price']].sort_values(by='calculated_host_listings_count', ascending=False))
+
+except FileNotFoundError:
+    print("Error: Data file not found. Please check the file paths.")
+except KeyError as e:
+    print(f"Error: Column '{e.args[0]}' not found. Check column names in your CSV.")
+except Exception as e:
+    print(f"An unexpected error occurred: {e}")
+```
+
+**4.1 Spatial autocorrelation distribution of data**  
+**Fig_4_1_a and Fig_4_1_b** depict the density and average price of multi host Airbnb listings in London. The central administrative region displays high density and prices, reflecting tourism demand and high property value. The density of peripheral administrative areas has decreased, and prices are generally lower. Although location has a significant impact on density and price, other factors such as property quality, amenities, and competition also play a role.
+
+**4.2 Regression analysis**  
+Regression analysis shows a moderate positive correlation (R ²=0.40) between multi landlord density and average Airbnb prices. However, important outliers, such as Lambeth's high price despite its low density, highlight the influence of other factors. Administrative regions are classified by price and density: green dots indicate high density and high price, indicating that multi landlord markets have significant influence; Red dots indicate high density or high price; The blue dot represents low density and low price as a baseline. This indicates that the influence of multiple landlords varies by administrative district.
+
+**4.3 Price distribution of different landlord types (box plot)**  
+From the median price perspective, the price distribution of multi property landlords is higher and wider, which may indicate that multi property landlords offer more high-end or high priced properties. Single property landlords and small-scale landlords offer lower prices, which may be more suitable for budget travelers.
+
+
+```{python}
+try:
+    # Filter the required columns
+    columns_needed = [
+        'calculated_host_listings_count', 'neighbourhood', 'price',
+        'availability_365', 'room_type'
+    ]
+    df_airbnb_total_Q4_2 = df_airbnb_total[columns_needed]
+
+    # Data cleaning
+    df_airbnb_total_Q4_2['price'] = pd.to_numeric(df_airbnb_total_Q4_2['price'].astype(str).str.replace(r'[$,]', '', regex=True), errors='coerce') # Convert price to numeric, handling errors
+    df_airbnb_total_Q4_2.dropna(inplace=True)  # Remove rows with missing values
+
+    # Host Behavior Distribution
+    # Define host types based on the number of listings
+    def categorize_host(count):
+        if count == 1:
+            return 'Single-listing Host'
+        elif 2 <= count <= 4:
+            return 'Small-scale Host'
+        else:
+            return 'Multi-listing Host'
+
+    df_airbnb_total_Q4_2['host_type'] = df_airbnb_total_Q4_2['calculated_host_listings_count'].apply(categorize_host)
+
+    # Price and Room Type Regression Analysis
+    # Filter data with price between 200 and 1000 to mitigate outlier effects
+    data_filtered = df_airbnb_total_Q4_2[(df_airbnb_total_Q4_2['price'] >= 200) & (df_airbnb_total_Q4_2['price'] <= 1000)]
+
+    # Create a figure with two subplots side-by-side
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(24, 8))
+
+    # Plot 1: Price vs Availability by Host Type
+    host_types = data_filtered['host_type'].unique()
+    palette_host = sns.color_palette('Paired', n_colors=len(host_types))
+
+    for (cat, group), color in zip(data_filtered.groupby('host_type'), palette_host):
+        # Sample if needed for clarity and speed
+        sample_group = group.sample(n=5000, random_state=42) if len(group) > 5000 else group
+        
+        # Scatter plot
+        sns.scatterplot(
+            data=sample_group, 
+            x='availability_365', 
+            y='price', 
+            color=color, 
+            alpha=0.2, 
+            s=8, 
+            ax=ax1
+        )
+        
+        # Regression line
+        sns.regplot(
+            data=group, 
+            x='availability_365', 
+            y='price', 
+            scatter=False, 
+            color=color, 
+            line_kws={'linewidth': 3}, 
+            ax=ax1
+        )
+
+    ax1.set_title('Fig_4_2_a: Price vs Availability by Host Type\n', fontsize=16, fontweight='bold', color='darkblue')
+    ax1.set_xlabel('Availability (days per year)', fontsize=14, fontweight='bold', color='darkblue')
+    ax1.set_ylabel('Price (£)', fontsize=14, fontweight='bold', color='darkblue')
+    ax1.tick_params(axis='x', labelsize=12) 
+    ax1.tick_params(axis='y', labelsize=12)
+
+    # Create a custom legend for Host Type subplot
+    for cat, color in zip(host_types, palette_host):
+        ax1.scatter([], [], color=color, label=cat)
+    ax1.legend(title='Host Type', loc='upper left', fontsize=10, title_fontsize=12)
+
+    # Plot 2: Price vs Availability by Room Type
+    room_types = data_filtered['room_type'].unique()
+    palette_room = sns.color_palette('Paired', n_colors=len(room_types))
+
+    for (cat, group), color in zip(data_filtered.groupby('room_type'), palette_room):
+        sns.scatterplot(
+            data=group, 
+            x='availability_365', 
+            y='price', 
+            color=color, 
+            alpha=0.2, 
+            s=8, 
+            ax=ax2
+        )
+        
+        sns.regplot(
+            data=group, 
+            x='availability_365', 
+            y='price', 
+            scatter=False, 
+            color=color, 
+            line_kws={'linewidth': 3}, 
+            ax=ax2
+        )
+
+    ax2.set_title('Fig_4_2_b: Price vs Availability by Room Type\n', fontsize=16, fontweight='bold', color='darkblue')
+    ax2.set_xlabel('Availability (days per year)', fontsize=14, fontweight='bold', color='darkblue')
+    ax2.set_ylabel('Price (£)', fontsize=14, fontweight='bold', color='darkblue')
+    ax2.tick_params(axis='x', labelsize=12) 
+    ax2.tick_params(axis='y', labelsize=12)
+
+    # Create a custom legend for Room Type subplot
+    for cat, color in zip(room_types, palette_room):
+        ax2.scatter([], [], color=color, label=cat)
+    ax2.legend(title='Room Type', loc='upper left', fontsize=10, title_fontsize=12)
+
+    plt.tight_layout()
+    plt.show()
+
+except FileNotFoundError:
+    print("Error: 'listings (1).csv' not found. Check the file path.")
+except KeyError as e:
+    print(f"Error: Column '{e.args[0]}' not found in the dataset. Check column names.")
+except pd.errors.EmptyDataError:
+    print("Error: The dataset is empty.")
+except Exception as e:
+    print(f"An unexpected error occurred: {e}")
+```
+
+**4.4 Further Analysis**
+
+**Fig_4_2_a: Relationship between Landlord Type and Price/Length of Stay**
+
+1.Multi-landlord property prices increase slightly with rental days, but this effect is weak, suggesting pricing is not heavily influenced by short-term demand.  
+2.Rental days for all landlord types cluster within 0–200 days, especially multi landlords, indicating a preference for short-term rentals.
+
+**Fig_4_2_b: Relationship between Room Type and Price/Rental Days**
+
+1.Entire homes/apartments show a positive price-length correlation, suited for longer stays.  
+2.Hotel rooms also increase slightly in price as stays lengthen.  
+3.Shared and private rooms show a negative price-length relationship, appealing to budget-conscious or temporary tenants.
+
+**4.5 Summary**    
+Pricing correlates with central London location and host type. Multi landlords offer broader price ranges but show weak price-term correlations, suggesting stable pricing despite demand fluctuations. Entire properties’ prices rise with stay length, while shared rooms drop. These findings highlight the complex dynamics of landlord types, pricing strategies, and market segmentation in London’s short-term rental scene.
+
+## 5. Reviews and Market Demand  
+Reviews serve as a proxy for demand, with high-review areas reflecting strong tourist interest. Linking demand signals with spatial patterns, pricing, availability, and host types provides a comprehensive view of Airbnb’s character in the city.
+```{python}
+#| include: false
+
+# Check for missing values in 'reviews_per_month' and 'price'
+missing_before = df_airbnb_total[['reviews_per_month', 'price']].isna().sum()
+print("Missing values before drop:\n", missing_before)
+
+# Drop rows with missing values in 'reviews_per_month' and 'price'
+df_airbnb_total_Q5_1 = df_airbnb_total.dropna(subset=['reviews_per_month', 'price'])
+
+missing_after = df_airbnb_total_Q5_1[['reviews_per_month', 'price']].isna().sum()
+print("Missing values after drop:\n", missing_after)
+```
+
+```{python}
+# Use IQR method to detect and remove outliers
+Q1 = df_airbnb_total_Q5_1['price'].quantile(0.25)
+Q3 = df_airbnb_total_Q5_1['price'].quantile(0.75)
+IQR = Q3 - Q1
+lower_bound = Q1 - 1.5*IQR
+upper_bound = Q3 + 1.5*IQR
+```
+
+```{python}
+#| include: false
+
+# Count outliers
+outliers = df_airbnb_total_Q5_1[(df_airbnb_total_Q5_1['price'] < lower_bound) | (df_airbnb_total_Q5_1['price'] > upper_bound)]
+print("Number of outlier rows:", len(outliers))
+
+# Remove outliers
+df_normal = df_airbnb_total_Q5_1[(df_airbnb_total_Q5_1['price'] >= lower_bound) & (df_airbnb_total_Q5_1['price'] <= upper_bound)]
+
+# Generate boxplot of normal data
+plt.figure(figsize=(8,6))
+df_normal['price'].plot(kind='box')
+plt.title('Price Boxplot (Normal)\n', fontsize=16, fontweight='bold', color='darkblue')
+plt.yticks(fontsize=12)
+plt.show()
+```
+
+```{python}
+data_for_clustering = df_normal[['reviews_per_month']].values
+
+# Use KMeans to classify into 5 clusters
+kmeans = KMeans(n_clusters=5, random_state=42)
+df_normal['group'] = kmeans.fit_predict(data_for_clustering) + 1  # Add 1 to start groups from 1 instead of 0
+
+# Print group info
+group_counts = df_normal['group'].value_counts().sort_index()
+# print("KMeans Groups:", group_counts)
+# print(group_counts / len(df_normal))
+
+# The top 2 groups are considered "most popular"
+top_2_groups = sorted(group_counts.index)[-2:]
+popular_data = df_normal[df_normal['group'].isin(top_2_groups)]
+
+# print(top_2_groups)
+# print("Count:", len(popular_data))
+```
+
+```{python}
+# Create a figure with two subplots
+fig, axes = plt.subplots(1, 2, figsize=(16, 6), sharey=True)
+
+# First subplot for 'Normal' data
+axes[0].scatter(df_normal['reviews_per_month'], df_normal['price'], alpha=0.5, c='blue', s=10)
+axes[0].set_title('Fig_5_a:Reviews_per_month vs Price (Normal)\n', fontsize=16, fontweight='bold', color='darkblue')
+axes[0].set_xlabel('Reviews_per_month', fontsize=14, fontweight='bold', color='darkblue')
+axes[0].tick_params(axis='both', labelsize=12)
+
+# Second subplot for 'Popular' data
+axes[1].scatter(popular_data['reviews_per_month'], popular_data['price'], alpha=0.5, c='red', s=10)
+axes[1].set_title('Fig_5_b:Reviews_per_month vs Price (Popular)\n', fontsize=16, fontweight='bold', color='darkblue')
+axes[1].set_xlabel('Reviews_per_month', fontsize=14, fontweight='bold', color='darkblue')
+axes[1].set_ylabel('Price', fontsize=14, fontweight='bold', color='darkblue')
+axes[1].tick_params(axis='both', labelsize=12)
+
+# Adjust layout and show plot
+plt.tight_layout()
+plt.show()
+```
+
+```{python}
+#| include: false
+
+# Count 'neighbourhood' in popular data and generate a bar chart
+neighbourhood_counts = popular_data['neighbourhood'].value_counts().head(20)
+
+plt.figure(figsize=(8, 6))
+neighbourhood_counts.plot(kind='bar')
+plt.title('Neighbourhood Count (Popular)\n', fontsize=16, fontweight='bold', color='darkblue')
+plt.xlabel('Neighbourhood', fontsize=14, fontweight='bold', color='darkblue')
+plt.ylabel('Count', fontsize=14, fontweight='bold', color='darkblue')
+plt.xticks(rotation=45, ha='right', fontsize=12)
+plt.yticks(fontsize=12)
+plt.tight_layout()
+plt.show()
+```
+
+**5.1 Relations Between Price and Popularity**  
+
+In the “Normal” dataset (low review activity), prices are broad across a mostly low-review landscape, but listings with more than 10 reviews are rare. No clear link between price and review count emerges.
+
+In the “Popular” dataset (high review activity), listings are more scattered, and prices vary widely regardless of review count. No clear upward or downward trend in price aligns with increased reviews.
+
+**5.2 Methodology**  
+Using review activity (Reviews_per_month) as a marker, both “Popular” and “Normal” datasets show no evident linear relationship between price and review count. Price remains broadly distributed with no clear correlation to review frequency.
+
+**5.3 Findings**
+
+**Regional Variations**:  
+Popular listings are unevenly distributed across London, with top areas hosting many more listings than lower-ranked regions.
+
+**Tourism Hotspots**:  
+High concentrations of popular listings appear in central, tourist-heavy areas (e.g., Westminster, Camden, Tower Hamlets). Such districts attract more visitors and thus have more frequently reviewed properties.
+
+**5.4 Summary**  
+Popular listings cluster in central, well-known tourist boroughs, underscoring a strong link between location and listing popularity.
+
+## 6. Reflection  
+The InsideAirbnb dataset provides granular insights into London’s STL market and can guide evidence-based regulation, as seen in cities like New York and Barcelona @wachsmuth_airbnb_2018. Policymakers can identify neighborhoods with high STL density, such as Westminster or Kensington, where Airbnb listings cluster around tourist attractions, potentially reducing long-term housing supply.
+
+This data helps distinguish between casual hosts who let rooms occasionally and commercial operators managing multiple properties. Cities like Amsterdam have introduced tiered regulation, placing tighter controls on commercial hosts @nieuwland_regulating_2020. London authorities could use InsideAirbnb data to enforce existing measures—such as the 90-day rule—more effectively. By correlating availability with long-term housing data, they can determine if excessive STR activity is displacing local residents, justifying caps on annual rental days or introducing registration systems.
+
+Additionally, price distributions reveal whether entire homes in central areas command excessive rates, informing price caps or additional taxes. The dataset’s room-type comparisons can help promote affordable options while curbing excessive commercial listings. Beyond reactive measures, policymakers can track the impact of new rules over time, adjusting strategies as needed.
+
+By using InsideAirbnb’s detailed listing-level, spatial, and temporal insights, London officials gain robust evidence to regulate STLs without stifling tourism. This mirrors international efforts: New York’s Local Law 18 and Barcelona’s clampdown on unlicensed rentals highlight the importance of data-driven policymaking. Ultimately, leveraging InsideAirbnb can lead to balanced regulations that maintain vibrant visitor economies while safeguarding long-term housing and community well-being.
+
+
+## References
